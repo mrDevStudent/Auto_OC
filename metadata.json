@@ -1,0 +1,6 @@
+{
+  "name": "MeetPilot",
+  "description": "Automatic Google Meet scheduler and auto-join assistant with admission alerts",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

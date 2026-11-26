@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">MeetPilot</string>
+    <string name="accessibility_service_label">MeetPilot Auto-Join</string>
+    <string name="accessibility_service_description">Monitors Google Meet pre-join and waiting screens during scheduled auto-join sessions to tap Join / Ask to join automatically, retry until admitted, and alert you once connected.</string>
+
+    <string name="channel_status_name">Auto-Join Session Status</string>
+    <string name="channel_status_desc">Ongoing status while MeetPilot is joining or waiting for host approval in Google Meet.</string>
+    <string name="channel_connected_name">Meeting Connected Alerts</string>
+    <string name="channel_connected_desc">High-priority alert when you are accepted and connected into a scheduled Google Meet session.</string>
+
+    <string name="nav_schedules">Schedules</string>
+    <string name="nav_activity">Activity</string>
+    <string name="nav_setup">Setup</string>
+
+    <string name="action_add_schedule">Add Schedule</string>
+    <string name="action_stop_auto_join">Stop Auto-Join</string>
+    <string name="action_test_join">Join Now</string>
+    <string name="action_save">Save Schedule</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+
+    <string name="error_invalid_code">Enter a valid Google Meet code (e.g. abc-defg-hij) or link.</string>
+    <string name="error_empty_title">Enter a class or meeting name.</string>
+</resources>
