@@ -33,6 +33,7 @@ class MeetingAlarmReceiver : BroadcastReceiver() {
                         scheduleId = schedule.id,
                         title = schedule.title,
                         meetingCode = schedule.meetingCode,
+                        preferredGmail = schedule.preferredGmail,
                         autoMuteMic = schedule.autoMuteMic,
                         autoTurnOffCamera = schedule.autoTurnOffCamera,
                         retryIntervalSeconds = schedule.retryIntervalSeconds

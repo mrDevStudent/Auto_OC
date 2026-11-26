@@ -282,6 +282,7 @@ fun MeetPilotApp(
                             onSetAlertVibrate = { viewModel.setAlertVibrate(it) },
                             onSetDefaultMute = { viewModel.setDefaultAutoMute(it) },
                             onSetDefaultCamOff = { viewModel.setDefaultAutoCamOff(it) },
+                            onSetDefaultGmail = { viewModel.setDefaultPreferredGmail(it) },
                             onTestAlertNotification = {
                                 viewModel.sendTestConnectionAlert()
                                 coroutineScope.launch {
@@ -309,11 +310,12 @@ fun MeetPilotApp(
                 showEditorSheet = false
                 editingSchedule = null
             },
-            onSave = { existingId, title, rawCode, hour, minute, daysBitmask, mute, camOff, retrySec ->
+            onSave = { existingId, title, rawCode, preferredGmail, hour, minute, daysBitmask, mute, camOff, retrySec ->
                 viewModel.saveSchedule(
                     existingId = existingId,
                     title = title,
                     rawCode = rawCode,
+                    preferredGmail = preferredGmail,
                     hour = hour,
                     minute = minute,
                     daysBitmask = daysBitmask,

@@ -62,6 +62,7 @@ class MeetPilotViewModel(application: Application) : AndroidViewModel(applicatio
         existingId: Long?,
         title: String,
         rawCode: String,
+        preferredGmail: String,
         hour: Int,
         minute: Int,
         daysBitmask: Int,
@@ -76,11 +77,17 @@ class MeetPilotViewModel(application: Application) : AndroidViewModel(applicatio
         val normalizedCode = MeetingCodeParser.normalizeMeetCode(rawCode)
             ?: return "Enter a valid Google Meet code (e.g. abc-defg-hij) or Meet link."
 
+        val cleanGmail = preferredGmail.trim().lowercase()
+        if (cleanGmail.isNotEmpty() && !cleanGmail.contains("@")) {
+            return "Enter a valid Gmail address or leave blank for Meet default."
+        }
+
         viewModelScope.launch {
             val entity = MeetingScheduleEntity(
                 id = existingId ?: 0L,
                 title = cleanTitle,
                 meetingCode = normalizedCode,
+                preferredGmail = cleanGmail,
                 hour = hour,
                 minute = minute,
                 daysOfWeekBitmask = daysBitmask,
@@ -90,6 +97,9 @@ class MeetPilotViewModel(application: Application) : AndroidViewModel(applicatio
                 retryIntervalSeconds = retryIntervalSeconds
             )
             repository.saveSchedule(entity)
+            if (cleanGmail.isNotEmpty()) {
+                settings.rememberGmail(cleanGmail)
+            }
         }
         return null
     }
@@ -112,6 +122,7 @@ class MeetPilotViewModel(application: Application) : AndroidViewModel(applicatio
             scheduleId = schedule.id,
             title = schedule.title,
             meetingCode = schedule.meetingCode,
+            preferredGmail = schedule.preferredGmail,
             autoMuteMic = schedule.autoMuteMic,
             autoTurnOffCamera = schedule.autoTurnOffCamera,
             retryIntervalSeconds = schedule.retryIntervalSeconds
@@ -150,6 +161,10 @@ class MeetPilotViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setDefaultRetrySeconds(seconds: Int) {
         viewModelScope.launch { settings.setDefaultRetrySeconds(seconds) }
+    }
+
+    fun setDefaultPreferredGmail(email: String) {
+        viewModelScope.launch { settings.setDefaultPreferredGmail(email) }
     }
 
     fun sendTestConnectionAlert() {

@@ -20,38 +20,62 @@ object AutoJoinCoordinator {
     val session: StateFlow<AutoJoinSession> = _session.asStateFlow()
 
     @Volatile
-    var micHandledForCurrentAttempt: Boolean = false
+    var lastMeetWindowSeenMillis: Long = 0L
 
     @Volatile
-    var camHandledForCurrentAttempt: Boolean = false
+    var accountSwitchAttempts: Int = 0
+
+    @Volatile
+    var camDisableAttempts: Int = 0
+
+    @Volatile
+    var micDisableAttempts: Int = 0
 
     fun isSessionActive(): Boolean = _session.value.phase.isActive()
+
+    fun touchMeetWindowSeen() {
+        lastMeetWindowSeenMillis = System.currentTimeMillis()
+    }
 
     fun startSession(
         context: Context,
         scheduleId: Long?,
         title: String,
         meetingCode: String,
+        preferredGmail: String = "",
         autoMuteMic: Boolean,
         autoTurnOffCamera: Boolean,
         retryIntervalSeconds: Int
     ) {
         val appContext = context.applicationContext
         val now = System.currentTimeMillis()
-        micHandledForCurrentAttempt = false
-        camHandledForCurrentAttempt = false
+        lastMeetWindowSeenMillis = now
+        accountSwitchAttempts = 0
+        camDisableAttempts = 0
+        micDisableAttempts = 0
+
+        val cleanEmail = preferredGmail.trim().lowercase()
+        val accessibilityReady = DeviceReadinessHelper.isAccessibilityServiceEnabled(appContext)
+        val initialMessage = if (!accessibilityReady) {
+            "Accessibility OFF — enable MeetPilot Auto-Join in Setup for hands-free join"
+        } else if (cleanEmail.isNotEmpty()) {
+            "Opening Google Meet ($meetingCode) as $cleanEmail"
+        } else {
+            "Opening Google Meet ($meetingCode)"
+        }
 
         val newSession = AutoJoinSession(
             scheduleId = scheduleId,
             title = title,
             meetingCode = meetingCode,
+            preferredGmail = cleanEmail,
             phase = AutoJoinPhase.LAUNCHING_MEET,
             attemptCount = 1,
             autoMuteMic = autoMuteMic,
             autoTurnOffCamera = autoTurnOffCamera,
             retryIntervalSeconds = retryIntervalSeconds.coerceIn(8, 120),
             startedAtMillis = now,
-            lastActionMessage = "Opening Google Meet ($meetingCode)",
+            lastActionMessage = initialMessage,
             lastUpdatedMillis = now
         )
         _session.value = newSession
@@ -62,7 +86,12 @@ object AutoJoinCoordinator {
             title = title,
             meetingCode = meetingCode,
             status = "STARTED",
-            message = "Auto-join started (Attempt #1)"
+            message = if (accessibilityReady) {
+                "Auto-join started (Attempt #1)" +
+                    if (cleanEmail.isNotEmpty()) " • Gmail: $cleanEmail" else ""
+            } else {
+                "Opened Meet, but Auto-Join Accessibility Service is disabled in Setup"
+            }
         )
 
         val serviceIntent = Intent(appContext, JoinCoordinatorService::class.java)
@@ -103,13 +132,20 @@ object AutoJoinCoordinator {
     fun onMeetLaunched(context: Context, launched: Boolean) {
         val current = _session.value
         if (!current.phase.isActive()) return
+        val accessibilityReady = DeviceReadinessHelper.isAccessibilityServiceEnabled(context)
         val nextPhase = if (launched) AutoJoinPhase.LOOKING_FOR_JOIN_BUTTON else AutoJoinPhase.RETRYING
-        val msg = if (launched) {
-            "Scanning Google Meet pre-join screen..."
-        } else {
-            "Could not launch Google Meet yet; will retry"
+        val msg = when {
+            !launched -> "Could not launch Google Meet yet; will retry"
+            !accessibilityReady -> "Meet opened — enable Auto-Join Accessibility in Setup"
+            else -> "Preparing pre-join (account, camera/mic, Join)..."
         }
         updateSession(context, nextPhase, msg)
+    }
+
+    fun onAccountSwitched(context: Context, detail: String) {
+        val current = _session.value
+        if (!current.phase.isActive()) return
+        updateSession(context, AutoJoinPhase.LOOKING_FOR_JOIN_BUTTON, detail)
     }
 
     fun onJoinButtonTapped(context: Context, buttonLabel: String) {
@@ -157,8 +193,8 @@ object AutoJoinCoordinator {
     fun onRetryRequested(context: Context, reason: String) {
         val current = _session.value
         if (!current.phase.isActive()) return
-        micHandledForCurrentAttempt = false
-        camHandledForCurrentAttempt = false
+        camDisableAttempts = 0
+        micDisableAttempts = 0
         val nextAttempt = current.attemptCount + 1
         val updated = current.copy(
             phase = AutoJoinPhase.RETRYING,

@@ -1,6 +1,8 @@
 package com.example.ui
 
 import android.Manifest
+import android.accounts.AccountManager
+import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
@@ -40,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +63,7 @@ fun SetupGuideScreen(
     onSetAlertVibrate: (Boolean) -> Unit,
     onSetDefaultMute: (Boolean) -> Unit,
     onSetDefaultCamOff: (Boolean) -> Unit,
+    onSetDefaultGmail: (String) -> Unit,
     onTestAlertNotification: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -70,6 +75,17 @@ fun SetupGuideScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) {
         onRefreshReadiness()
+    }
+
+    val defaultGmailLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (!email.isNullOrBlank()) {
+                onSetDefaultGmail(email)
+            }
+        }
     }
 
     Box(
@@ -147,7 +163,7 @@ fun SetupGuideScreen(
                 ReadinessCheckCard(
                     icon = Icons.Default.AccessibilityNew,
                     title = "Auto-Join Accessibility Service",
-                    description = "Detects Google Meet's Join / Ask to join button, mutes mic/cam if chosen, retries on timeouts, and detects admission.",
+                    description = "Detects Google Meet's Join / Ask to join button, switches Gmail, disables camera/mic, retries on timeouts, and detects admission.",
                     isReady = readiness.accessibilityEnabled,
                     actionLabel = if (readiness.accessibilityEnabled) "Manage Service" else "Enable Service",
                     buttonTestTag = "setup_accessibility_button",
@@ -281,6 +297,58 @@ fun SetupGuideScreen(
                             text = "Alert & Auto-Join Defaults",
                             style = MaterialTheme.typography.titleMedium
                         )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Default Gmail for Google Meet",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = prefs.defaultPreferredGmail.ifBlank { "Use Google Meet default account" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (prefs.defaultPreferredGmail.isNotBlank()) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (prefs.defaultPreferredGmail.isNotBlank()) {
+                                    TextButton(onClick = { onSetDefaultGmail("") }) {
+                                        Text("Clear")
+                                    }
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        val intent = AccountManager.newChooseAccountIntent(
+                                            null,
+                                            null,
+                                            arrayOf("com.google"),
+                                            null,
+                                            null,
+                                            null,
+                                            null
+                                        )
+                                        defaultGmailLauncher.launch(intent)
+                                    },
+                                    modifier = Modifier.testTag("setup_pick_default_gmail_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccountCircle,
+                                        contentDescription = "Choose default Gmail",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Pick")
+                                }
+                            }
+                        }
 
                         PreferenceSwitchRow(
                             title = "Sound alert when connected",

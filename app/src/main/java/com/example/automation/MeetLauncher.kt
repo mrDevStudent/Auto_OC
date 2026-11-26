@@ -17,9 +17,19 @@ object MeetLauncher {
         }
     }
 
-    fun buildMeetIntent(context: Context, meetingCode: String): Intent {
-        val url = MeetingCodeParser.toMeetUrl(meetingCode)
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+    fun buildMeetIntent(
+        context: Context,
+        meetingCode: String,
+        preferredGmail: String = ""
+    ): Intent {
+        val baseUrl = MeetingCodeParser.toMeetUrl(meetingCode)
+        val cleanEmail = preferredGmail.trim()
+        val finalUrl = if (cleanEmail.contains("@")) {
+            "$baseUrl?authuser=${Uri.encode(cleanEmail)}"
+        } else {
+            baseUrl
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         if (isGoogleMeetInstalled(context)) {
@@ -28,9 +38,13 @@ object MeetLauncher {
         return intent
     }
 
-    fun launchMeet(context: Context, meetingCode: String): Boolean {
+    fun launchMeet(
+        context: Context,
+        meetingCode: String,
+        preferredGmail: String = ""
+    ): Boolean {
         return try {
-            val intent = buildMeetIntent(context, meetingCode)
+            val intent = buildMeetIntent(context, meetingCode, preferredGmail)
             context.startActivity(intent)
             true
         } catch (_: Exception) {

@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -393,7 +394,15 @@ private fun ActiveAutoJoinBanner(
             )
 
             Text(
-                text = "${session.meetingCode} • ${session.lastActionMessage}",
+                text = buildString {
+                    append(session.meetingCode)
+                    if (session.preferredGmail.isNotEmpty()) {
+                        append(" • ")
+                        append(session.preferredGmail)
+                    }
+                    append(" • ")
+                    append(session.lastActionMessage)
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -504,7 +513,7 @@ private fun NextMeetingHeroCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = MeetingCodeParser.formatTime12Hour(schedule.hour, schedule.minute),
                             style = MaterialTheme.typography.titleLarge,
@@ -517,6 +526,15 @@ private fun NextMeetingHeroCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                         )
+                        if (schedule.preferredGmail.isNotEmpty()) {
+                            Text(
+                                text = schedule.preferredGmail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     Button(
@@ -567,7 +585,7 @@ private fun EmptyScheduleHeroCard(onAddClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Set your class time (e.g. Monday 5:00 PM) and meeting code. MeetPilot opens Google Meet, taps Join automatically, retries until accepted, and alerts you once inside.",
+                text = "Set your class time (e.g. Monday 5:00 PM), meeting code, and Gmail account. MeetPilot opens Google Meet, turns off cam/mic, taps Join, retries until accepted, and alerts you once inside.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -691,6 +709,27 @@ private fun ScheduleItemCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (schedule.preferredGmail.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Selected Gmail account",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = schedule.preferredGmail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             DayPillsRow(daysBitmask = schedule.daysOfWeekBitmask)

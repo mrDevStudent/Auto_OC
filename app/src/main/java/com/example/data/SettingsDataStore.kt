@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -17,7 +19,9 @@ data class UserPreferences(
     val alertVibrateOnConnect: Boolean = true,
     val defaultAutoMuteMic: Boolean = true,
     val defaultAutoCamOff: Boolean = true,
-    val defaultRetryIntervalSeconds: Int = 15
+    val defaultRetryIntervalSeconds: Int = 15,
+    val defaultPreferredGmail: String = "",
+    val savedGmails: List<String> = emptyList()
 )
 
 class SettingsDataStore(private val context: Context) {
@@ -27,6 +31,8 @@ class SettingsDataStore(private val context: Context) {
         val DEFAULT_MUTE = booleanPreferencesKey("default_auto_mute_mic")
         val DEFAULT_CAM_OFF = booleanPreferencesKey("default_auto_cam_off")
         val DEFAULT_RETRY_SEC = intPreferencesKey("default_retry_interval_seconds")
+        val DEFAULT_GMAIL = stringPreferencesKey("default_preferred_gmail")
+        val SAVED_GMAILS = stringSetPreferencesKey("saved_gmails")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
@@ -35,7 +41,9 @@ class SettingsDataStore(private val context: Context) {
             alertVibrateOnConnect = prefs[Keys.ALERT_VIBRATE] ?: true,
             defaultAutoMuteMic = prefs[Keys.DEFAULT_MUTE] ?: true,
             defaultAutoCamOff = prefs[Keys.DEFAULT_CAM_OFF] ?: true,
-            defaultRetryIntervalSeconds = prefs[Keys.DEFAULT_RETRY_SEC] ?: 15
+            defaultRetryIntervalSeconds = prefs[Keys.DEFAULT_RETRY_SEC] ?: 15,
+            defaultPreferredGmail = prefs[Keys.DEFAULT_GMAIL] ?: "",
+            savedGmails = (prefs[Keys.SAVED_GMAILS] ?: emptySet()).sorted()
         )
     }
 
@@ -57,5 +65,25 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setDefaultRetrySeconds(seconds: Int) {
         context.dataStore.edit { it[Keys.DEFAULT_RETRY_SEC] = seconds }
+    }
+
+    suspend fun setDefaultPreferredGmail(email: String) {
+        val clean = email.trim().lowercase()
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DEFAULT_GMAIL] = clean
+            if (clean.contains("@")) {
+                val existing = prefs[Keys.SAVED_GMAILS] ?: emptySet()
+                prefs[Keys.SAVED_GMAILS] = existing + clean
+            }
+        }
+    }
+
+    suspend fun rememberGmail(email: String) {
+        val clean = email.trim().lowercase()
+        if (!clean.contains("@")) return
+        context.dataStore.edit { prefs ->
+            val existing = prefs[Keys.SAVED_GMAILS] ?: emptySet()
+            prefs[Keys.SAVED_GMAILS] = existing + clean
+        }
     }
 }

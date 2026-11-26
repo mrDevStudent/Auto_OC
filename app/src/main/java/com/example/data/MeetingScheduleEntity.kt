@@ -8,6 +8,7 @@ data class MeetingScheduleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val title: String,
     val meetingCode: String,
+    val preferredGmail: String = "",
     val hour: Int,
     val minute: Int,
     val daysOfWeekBitmask: Int,

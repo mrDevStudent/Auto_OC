@@ -1,5 +1,9 @@
 package com.example.ui
 
+import android.accounts.AccountManager
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,7 +14,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +22,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.VideoCall
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -63,6 +69,7 @@ fun ScheduleEditorSheet(
         existingId: Long?,
         title: String,
         rawCode: String,
+        preferredGmail: String,
         hour: Int,
         minute: Int,
         daysBitmask: Int,
@@ -75,6 +82,9 @@ fun ScheduleEditorSheet(
 
     var title by remember { mutableStateOf(existingSchedule?.title ?: "") }
     var codeInput by remember { mutableStateOf(existingSchedule?.meetingCode ?: "") }
+    var gmailInput by remember {
+        mutableStateOf(existingSchedule?.preferredGmail ?: defaults.defaultPreferredGmail)
+    }
     var selectedHour by remember { mutableIntStateOf(existingSchedule?.hour ?: 17) }
     var selectedMinute by remember { mutableIntStateOf(existingSchedule?.minute ?: 0) }
     var daysBitmask by remember { mutableIntStateOf(existingSchedule?.daysOfWeekBitmask ?: 0b0000001) }
@@ -89,6 +99,18 @@ fun ScheduleEditorSheet(
     }
     var errorText by remember { mutableStateOf<String?>(null) }
     var showTimePicker by remember { mutableStateOf(false) }
+
+    val accountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val pickedEmail = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (!pickedEmail.isNullOrBlank()) {
+                gmailInput = pickedEmail.trim().lowercase()
+                errorText = null
+            }
+        }
+    }
 
     val parsedCodePreview = remember(codeInput) {
         MeetingCodeParser.normalizeMeetCode(codeInput)
@@ -154,6 +176,79 @@ fun ScheduleEditorSheet(
                     .fillMaxWidth()
                     .testTag("editor_code_input")
             )
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = gmailInput,
+                    onValueChange = {
+                        gmailInput = it
+                        errorText = null
+                    },
+                    label = { Text("Gmail account for Google Meet (optional)") },
+                    placeholder = { Text("Leave blank to use Meet default") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "Google account"
+                        )
+                    },
+                    trailingIcon = {
+                        if (gmailInput.isNotEmpty()) {
+                            IconButton(onClick = { gmailInput = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear Gmail account"
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("editor_gmail_input")
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        val intent = AccountManager.newChooseAccountIntent(
+                            null,
+                            null,
+                            arrayOf("com.google"),
+                            null,
+                            null,
+                            null,
+                            null
+                        )
+                        accountPickerLauncher.launch(intent)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("editor_pick_gmail_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Choose Gmail from phone",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Pick Gmail Account from Phone")
+                }
+
+                if (defaults.savedGmails.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        defaults.savedGmails.forEach { saved ->
+                            FilterChip(
+                                selected = gmailInput.equals(saved, ignoreCase = true),
+                                onClick = { gmailInput = saved },
+                                label = { Text(saved) }
+                            )
+                        }
+                    }
+                }
+            }
 
             Surface(
                 onClick = { showTimePicker = true },
@@ -347,6 +442,7 @@ fun ScheduleEditorSheet(
                             existingSchedule?.id,
                             title,
                             codeInput,
+                            gmailInput,
                             selectedHour,
                             selectedMinute,
                             daysBitmask,

@@ -19,6 +19,7 @@ data class AutoJoinSession(
     val scheduleId: Long? = null,
     val title: String = "",
     val meetingCode: String = "",
+    val preferredGmail: String = "",
     val phase: AutoJoinPhase = AutoJoinPhase.IDLE,
     val attemptCount: Int = 0,
     val autoMuteMic: Boolean = true,
