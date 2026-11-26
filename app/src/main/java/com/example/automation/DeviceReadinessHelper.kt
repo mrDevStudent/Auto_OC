@@ -22,7 +22,10 @@ data class DeviceReadinessStatus(
     val batteryOptimizationIgnored: Boolean = false,
     val manufacturerName: String = Build.MANUFACTURER,
     val deviceModel: String = Build.MODEL,
-    val isOppoOrColorOs: Boolean = false
+    val androidVersionRelease: String = Build.VERSION.RELEASE ?: "16",
+    val sdkInt: Int = Build.VERSION.SDK_INT,
+    val isOppoOrColorOs: Boolean = false,
+    val isReno11: Boolean = false
 ) {
     val coreReady: Boolean
         get() = accessibilityEnabled && exactAlarmAllowed && notificationsAllowed
@@ -35,6 +38,13 @@ data class DeviceReadinessStatus(
             notificationsAllowed,
             batteryOptimizationIgnored
         ).count { it }
+
+    val deviceDisplayLabel: String
+        get() = when {
+            isReno11 -> "OPPO Reno11 5G • ColorOS / Android $androidVersionRelease"
+            isOppoOrColorOs -> "$manufacturerName $deviceModel • ColorOS / Android $androidVersionRelease"
+            else -> "$manufacturerName $deviceModel • Android $androidVersionRelease"
+        }
 }
 
 object DeviceReadinessHelper {
@@ -42,10 +52,14 @@ object DeviceReadinessHelper {
     fun inspect(context: Context): DeviceReadinessStatus {
         val manufacturer = Build.MANUFACTURER.orEmpty()
         val brand = Build.BRAND.orEmpty()
+        val model = Build.MODEL.orEmpty()
         val isOppo = manufacturer.contains("oppo", ignoreCase = true) ||
             brand.contains("oppo", ignoreCase = true) ||
             manufacturer.contains("realme", ignoreCase = true) ||
             manufacturer.contains("oneplus", ignoreCase = true)
+        val isReno11 = model.contains("CPH2599", ignoreCase = true) ||
+            model.contains("Reno11", ignoreCase = true) ||
+            model.contains("Reno 11", ignoreCase = true)
 
         return DeviceReadinessStatus(
             googleMeetInstalled = MeetLauncher.isGoogleMeetInstalled(context),
@@ -54,8 +68,11 @@ object DeviceReadinessHelper {
             notificationsAllowed = isNotificationsAllowed(context),
             batteryOptimizationIgnored = isIgnoringBatteryOptimizations(context),
             manufacturerName = manufacturer.ifBlank { "Android" },
-            deviceModel = Build.MODEL.orEmpty(),
-            isOppoOrColorOs = isOppo
+            deviceModel = model,
+            androidVersionRelease = Build.VERSION.RELEASE ?: "16",
+            sdkInt = Build.VERSION.SDK_INT,
+            isOppoOrColorOs = isOppo,
+            isReno11 = isReno11
         )
     }
 
@@ -151,6 +168,38 @@ object DeviceReadinessHelper {
         }
     }
 
+    fun openColorOsAutoLaunchOrAppInfo(context: Context) {
+        val colorOsIntents = listOf(
+            Intent().setComponent(
+                ComponentName(
+                    "com.oplus.battery",
+                    "com.oplus.powermanager.fuelgaue.PowerControlActivity"
+                )
+            ),
+            Intent().setComponent(
+                ComponentName(
+                    "com.coloros.safecenter",
+                    "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+                )
+            ),
+            Intent().setComponent(
+                ComponentName(
+                    "com.oplus.safecenter",
+                    "com.oplus.safecenter.permission.startup.StartupAppListActivity"
+                )
+            )
+        )
+        for (candidate in colorOsIntents) {
+            candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val launched = runCatching {
+                context.startActivity(candidate)
+                true
+            }.getOrDefault(false)
+            if (launched) return
+        }
+        openAppDetailsSettings(context)
+    }
+
     fun openAppDetailsSettings(context: Context) {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:${context.packageName}")
@@ -162,14 +211,14 @@ object DeviceReadinessHelper {
     fun openGoogleMeetStorePage(context: Context) {
         val marketIntent = Intent(
             Intent.ACTION_VIEW,
-            Uri.parse("market://details?id=${MeetLauncher.GOOGLE_MEET_PACKAGE}")
+            Uri.parse("market://details?id=${MeetLauncher.GOOGLE_MEET_UNIFIED_PACKAGE}")
         ).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         runCatching { context.startActivity(marketIntent) }.onFailure {
             val webIntent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("https://play.google.com/store/apps/details?id=${MeetLauncher.GOOGLE_MEET_PACKAGE}")
+                Uri.parse("https://play.google.com/store/apps/details?id=${MeetLauncher.GOOGLE_MEET_UNIFIED_PACKAGE}")
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

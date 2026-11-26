@@ -146,6 +146,28 @@ object AutoJoinCoordinator {
         val current = _session.value
         if (!current.phase.isActive()) return
         updateSession(context, AutoJoinPhase.LOOKING_FOR_JOIN_BUTTON, detail)
+        logEvent(
+            context,
+            scheduleId = current.scheduleId,
+            title = current.title,
+            meetingCode = current.meetingCode,
+            status = "ACCOUNT",
+            message = detail
+        )
+    }
+
+    fun onPreJoinStep(context: Context, detail: String) {
+        val current = _session.value
+        if (!current.phase.isActive()) return
+        updateSession(context, AutoJoinPhase.LOOKING_FOR_JOIN_BUTTON, detail)
+        logEvent(
+            context,
+            scheduleId = current.scheduleId,
+            title = current.title,
+            meetingCode = current.meetingCode,
+            status = "PREJOIN",
+            message = detail
+        )
     }
 
     fun onJoinButtonTapped(context: Context, buttonLabel: String) {

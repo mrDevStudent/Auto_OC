@@ -1,10 +1,12 @@
 package com.example.automation
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 
 class MeetAutoJoinAccessibilityService : AccessibilityService() {
 
@@ -57,25 +59,52 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
         mainHandler.postDelayed(delayedScanRunnable, delayMs)
     }
 
+    private fun getRelevantRoots(): List<Pair<String, AccessibilityNodeInfo>> {
+        val roots = ArrayList<Pair<String, AccessibilityNodeInfo>>(4)
+        val seenHashes = HashSet<Int>()
+
+        windows?.forEach { window ->
+            if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION ||
+                window.type == AccessibilityWindowInfo.TYPE_SYSTEM
+            ) {
+                val r = window.root ?: return@forEach
+                val pkg = r.packageName?.toString().orEmpty()
+                if (pkg in SUPPORTED_PACKAGES && seenHashes.add(System.identityHashCode(r))) {
+                    roots.add(pkg to r)
+                }
+            }
+        }
+
+        rootInActiveWindow?.let { activeRoot ->
+            val pkg = activeRoot.packageName?.toString().orEmpty()
+            if (pkg in SUPPORTED_PACKAGES && seenHashes.add(System.identityHashCode(activeRoot))) {
+                roots.add(pkg to activeRoot)
+            }
+        }
+
+        return roots
+    }
+
     private fun inspectActiveWindow() {
-        val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString().orEmpty()
-        if (pkg.isNotEmpty() && pkg !in SUPPORTED_PACKAGES) return
+        val roots = getRelevantRoots()
+        if (roots.isEmpty()) return
 
         val session = AutoJoinCoordinator.session.value
         if (!session.phase.isActive()) return
 
         AutoJoinCoordinator.touchMeetWindowSeen()
 
-        val allNodes = ArrayList<AccessibilityNodeInfo>(80)
-        collectNodes(root, allNodes)
+        val allNodes = ArrayList<AccessibilityNodeInfo>(128)
+        val windowPackages = HashSet<String>()
+        for ((pkg, root) in roots) {
+            windowPackages.add(pkg)
+            collectNodes(root, allNodes)
+        }
+        if (allNodes.isEmpty()) return
 
         val lowerLabels = allNodes.mapNotNull { node ->
-            val combined = buildString {
-                node.text?.let { append(it).append(' ') }
-                node.contentDescription?.let { append(it) }
-            }.trim().lowercase()
-            combined.ifEmpty { null }
+            val label = nodeLabel(node)
+            label.ifEmpty { null }
         }
 
         // 1. Check if already admitted and connected into the call
@@ -102,7 +131,7 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
                         applicationContext,
                         "Tapped Try again / Rejoin after timeout"
                     )
-                    scheduleDelayedScan(600L)
+                    scheduleDelayedScan(700L)
                     return
                 }
             }
@@ -127,16 +156,24 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 5. Handle Gmail account selection or switching to preferredGmail
+        // 5. Handle Gmail account selection (including com.google.android.gms system picker & Meet sheets)
         val preferredEmail = session.preferredGmail.trim().lowercase()
-        if (preferredEmail.isNotEmpty()) {
-            val isAccountPicker = lowerLabels.any {
+        val visibleEmails = lowerLabels
+            .flatMap { EMAIL_REGEX.findAll(it).map { match -> match.value }.toList() }
+            .distinct()
+
+        val isGmsWindow = "com.google.android.gms" in windowPackages
+        val isAccountPicker = isGmsWindow ||
+            visibleEmails.size >= 2 ||
+            lowerLabels.any {
                 it.contains("choose an account") ||
                     it.contains("use meet with") ||
                     it.contains("add another account") ||
-                    it.contains("switch account")
+                    it.contains("switch account") ||
+                    it.contains("use without an account")
             }
 
+        if (preferredEmail.isNotEmpty()) {
             if (isAccountPicker) {
                 val targetEmailNode = findClickableNodeByEmail(allNodes, preferredEmail)
                 if (targetEmailNode != null) {
@@ -147,7 +184,7 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
                             applicationContext,
                             "Selected $preferredEmail"
                         )
-                        scheduleDelayedScan(600L)
+                        scheduleDelayedScan(750L)
                     }
                     return
                 }
@@ -155,14 +192,19 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
                 if (continueBtn != null && now - lastAccountActionTimeMs > 700L) {
                     lastAccountActionTimeMs = now
                     continueBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    scheduleDelayedScan(750L)
+                    return
+                }
+                // Try scrolling if the target Gmail is off-screen in a long account list
+                val scrollable = allNodes.firstOrNull { it.isScrollable }
+                if (scrollable != null && now - lastAccountActionTimeMs > 900L) {
+                    lastAccountActionTimeMs = now
+                    scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     scheduleDelayedScan(600L)
                     return
                 }
             } else {
-                // On pre-join screen: verify current Gmail matches preferredEmail
-                val visibleEmails = lowerLabels
-                    .flatMap { EMAIL_REGEX.findAll(it).map { match -> match.value }.toList() }
-                    .distinct()
+                // On pre-join screen: verify active Gmail matches preferredEmail
                 val matchesTarget = visibleEmails.any { it == preferredEmail }
                 val hasWrongEmail = visibleEmails.isNotEmpty() && !matchesTarget
 
@@ -177,46 +219,60 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
                                 applicationContext,
                                 "Switching Google Meet account to $preferredEmail..."
                             )
-                            scheduleDelayedScan(600L)
+                            scheduleDelayedScan(750L)
                         }
                         return
                     }
                 }
             }
-        } else if (lowerLabels.any { it.contains("choose an account") || it.contains("use meet with") }) {
+        } else if (isAccountPicker) {
             val continueBtn = findClickableNodeByKeywords(allNodes, listOf("continue"))
             if (continueBtn != null && now - lastAccountActionTimeMs > 1_000L) {
                 lastAccountActionTimeMs = now
                 continueBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                scheduleDelayedScan(600L)
+                scheduleDelayedScan(650L)
                 return
             }
         }
 
-        // 6. Auto-turn-off camera BEFORE tapping Join
-        if (session.autoTurnOffCamera && AutoJoinCoordinator.camDisableAttempts < 5) {
+        // 6. Auto-turn-off camera BEFORE tapping Join (verifies ON vs OFF state)
+        if (session.autoTurnOffCamera && !isCameraConfirmedOff(allNodes) &&
+            AutoJoinCoordinator.camDisableAttempts < 5
+        ) {
             val camOffNode = findCameraTurnOffNode(allNodes)
             if (camOffNode != null) {
-                if (now - lastMediaToggleTimeMs >= 350L) {
+                if (now - lastMediaToggleTimeMs >= 500L) {
                     lastMediaToggleTimeMs = now
                     AutoJoinCoordinator.camDisableAttempts++
-                    camOffNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    if (camOffNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        AutoJoinCoordinator.onPreJoinStep(
+                            applicationContext,
+                            "Turned off camera (attempt ${AutoJoinCoordinator.camDisableAttempts})"
+                        )
+                    }
                 }
-                scheduleDelayedScan(450L)
+                scheduleDelayedScan(650L)
                 return
             }
         }
 
-        // 7. Auto-mute microphone BEFORE tapping Join
-        if (session.autoMuteMic && AutoJoinCoordinator.micDisableAttempts < 5) {
+        // 7. Auto-mute microphone BEFORE tapping Join (verifies ON vs OFF state)
+        if (session.autoMuteMic && !isMicConfirmedOff(allNodes) &&
+            AutoJoinCoordinator.micDisableAttempts < 5
+        ) {
             val micOffNode = findMicTurnOffNode(allNodes)
             if (micOffNode != null) {
-                if (now - lastMediaToggleTimeMs >= 350L) {
+                if (now - lastMediaToggleTimeMs >= 500L) {
                     lastMediaToggleTimeMs = now
                     AutoJoinCoordinator.micDisableAttempts++
-                    micOffNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    if (micOffNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        AutoJoinCoordinator.onPreJoinStep(
+                            applicationContext,
+                            "Muted microphone (attempt ${AutoJoinCoordinator.micDisableAttempts})"
+                        )
+                    }
                 }
-                scheduleDelayedScan(450L)
+                scheduleDelayedScan(650L)
                 return
             }
         }
@@ -246,7 +302,9 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
     }
 
     private fun collectNodes(node: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo>) {
-        out.add(node)
+        if (node.isVisibleToUser) {
+            out.add(node)
+        }
         val count = node.childCount
         for (i in 0 until count) {
             val child = node.getChild(i) ?: continue
@@ -307,38 +365,106 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun isCameraConfirmedOff(nodes: List<AccessibilityNodeInfo>): Boolean {
+        return nodes.any { node ->
+            val combined = nodeLabel(node)
+            val stateDesc = nodeStateDescription(node)
+            val resId = node.viewIdResourceName?.lowercase().orEmpty()
+
+            combined.contains("turn on camera") ||
+                combined.contains("turn camera on") ||
+                combined.contains("turn on video") ||
+                combined.contains("turn video on") ||
+                combined.contains("camera is off") ||
+                combined.contains("video is off") ||
+                combined.contains("camera off") ||
+                combined.contains("video off") ||
+                combined.contains("camera, off") ||
+                combined.contains("video, off") ||
+                ((combined == "camera" || combined == "video" ||
+                    resId.contains("camera") || resId.contains("video")) &&
+                    (stateDesc == "off" || stateDesc == "disabled" ||
+                        (node.isCheckable && !node.isChecked)))
+        }
+    }
+
+    private fun isMicConfirmedOff(nodes: List<AccessibilityNodeInfo>): Boolean {
+        return nodes.any { node ->
+            val combined = nodeLabel(node)
+            val stateDesc = nodeStateDescription(node)
+            val resId = node.viewIdResourceName?.lowercase().orEmpty()
+
+            combined.contains("turn on microphone") ||
+                combined.contains("turn microphone on") ||
+                combined.contains("turn on mic") ||
+                combined.contains("unmute") ||
+                combined.contains("microphone is off") ||
+                combined.contains("mic is off") ||
+                combined.contains("microphone off") ||
+                combined.contains("mic off") ||
+                ((combined == "microphone" || combined == "mic" ||
+                    resId.contains("mic") || resId.contains("audio")) &&
+                    !combined.contains("speaker") &&
+                    (stateDesc == "off" || stateDesc == "muted" ||
+                        (node.isCheckable && !node.isChecked)))
+        }
+    }
+
     private fun findCameraTurnOffNode(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
         for (node in nodes) {
             val combined = nodeLabel(node)
+            val stateDesc = nodeStateDescription(node)
             val resId = node.viewIdResourceName?.lowercase().orEmpty()
 
             val excluded = combined.contains("turn on") ||
                 combined.contains("is off") ||
                 combined.contains("camera off") ||
                 combined.contains("video off") ||
+                combined.contains("camera, off") ||
+                combined.contains("video, off") ||
                 combined.contains("switch camera") ||
                 combined.contains("flip camera") ||
                 combined.contains("effects") ||
                 combined.contains("blur")
             if (excluded) continue
 
-            val matchesLabel = combined.contains("turn off camera") ||
+            val ancestor = findClickableAncestor(node)
+            val ancestorState = ancestor?.let { nodeStateDescription(it) }.orEmpty()
+            val isCheckedOrSelectedOn = node.isChecked ||
+                node.isSelected ||
+                ancestor?.isChecked == true ||
+                ancestor?.isSelected == true ||
+                stateDesc == "on" ||
+                stateDesc == "enabled" ||
+                ancestorState == "on" ||
+                ancestorState == "enabled"
+
+            val matchesExplicitOn = combined.contains("turn off camera") ||
                 combined.contains("turn camera off") ||
                 combined.contains("turn off video") ||
                 combined.contains("turn video off") ||
                 combined.contains("stop video") ||
+                combined.contains("disable camera") ||
                 combined.contains("camera is on") ||
                 combined.contains("video is on") ||
+                combined.contains("camera, on") ||
+                combined.contains("video, on") ||
                 combined == "camera on" ||
                 combined == "video on"
 
-            val matchesToggleId = (resId.contains("video") || resId.contains("camera")) &&
-                node.isCheckable && node.isChecked
+            val isCameraControl = combined == "camera" ||
+                combined == "video" ||
+                resId.contains("video_button") ||
+                resId.contains("camera_button") ||
+                resId.contains("call_video") ||
+                resId.contains("toggle_camera") ||
+                resId.contains("toggle_video") ||
+                resId.contains("video_toggle") ||
+                resId.contains("camera_toggle")
 
-            if (matchesLabel || matchesToggleId) {
-                val clickable = findClickableAncestor(node)
-                if (clickable != null && clickable.isEnabled) {
-                    return clickable
+            if (matchesExplicitOn || (isCameraControl && isCheckedOrSelectedOn)) {
+                if (ancestor != null && ancestor.isEnabled) {
+                    return ancestor
                 }
             }
         }
@@ -348,32 +474,50 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
     private fun findMicTurnOffNode(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
         for (node in nodes) {
             val combined = nodeLabel(node)
+            val stateDesc = nodeStateDescription(node)
             val resId = node.viewIdResourceName?.lowercase().orEmpty()
 
             val excluded = combined.contains("turn on") ||
                 combined.contains("unmute") ||
                 combined.contains("is off") ||
                 combined.contains("microphone off") ||
-                combined.contains("mic off")
+                combined.contains("mic off") ||
+                combined.contains("speaker")
             if (excluded) continue
 
-            val matchesLabel = combined.contains("turn off microphone") ||
+            val ancestor = findClickableAncestor(node)
+            val ancestorState = ancestor?.let { nodeStateDescription(it) }.orEmpty()
+            val isCheckedOrSelectedOn = node.isChecked ||
+                node.isSelected ||
+                ancestor?.isChecked == true ||
+                ancestor?.isSelected == true ||
+                stateDesc == "on" ||
+                stateDesc == "enabled" ||
+                ancestorState == "on" ||
+                ancestorState == "enabled"
+
+            val matchesExplicitOn = combined.contains("turn off microphone") ||
                 combined.contains("turn microphone off") ||
                 combined.contains("turn off mic") ||
                 combined.contains("turn mic off") ||
                 combined.contains("mute microphone") ||
                 combined.contains("microphone is on") ||
                 combined.contains("mic is on") ||
+                combined.contains("microphone, on") ||
+                combined.contains("mic, on") ||
                 combined == "mute" ||
                 combined == "microphone on"
 
-            val matchesToggleId = (resId.contains("mic") || resId.contains("audio")) &&
-                node.isCheckable && node.isChecked && !combined.contains("speaker")
+            val isMicControl = combined == "microphone" ||
+                combined == "mic" ||
+                resId.contains("mic_button") ||
+                resId.contains("mute_button") ||
+                resId.contains("audio_toggle") ||
+                resId.contains("mic_toggle")
 
-            if (matchesLabel || matchesToggleId) {
-                val clickable = findClickableAncestor(node)
-                if (clickable != null && clickable.isEnabled) {
-                    return clickable
+            if (matchesExplicitOn || (isMicControl && isCheckedOrSelectedOn)) {
+                if (ancestor != null && ancestor.isEnabled) {
+                    return ancestor
                 }
             }
         }
@@ -400,7 +544,6 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
         nodes: List<AccessibilityNodeInfo>,
         visibleWrongEmails: List<String>
     ): AccessibilityNodeInfo? {
-        // First try an explicit "Switch" button (excluding "Switch here" / "Switch camera")
         for (node in nodes) {
             val combined = nodeLabel(node)
             if (combined == "switch" || combined.contains("switch account")) {
@@ -408,12 +551,12 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
                 if (clickable != null && clickable.isEnabled) return clickable
             }
         }
-        // Fallback: tap the signed-in account pill/row showing the wrong email
         for (node in nodes) {
             val combined = nodeLabel(node)
             if (visibleWrongEmails.any { combined.contains(it) } ||
                 combined.contains("signed in as") ||
-                combined.contains("joining as")
+                combined.contains("joining as") ||
+                combined.contains("google account")
             ) {
                 val clickable = findClickableAncestor(node)
                 if (clickable != null && clickable.isEnabled) return clickable
@@ -475,18 +618,31 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun nodeStateDescription(node: AccessibilityNodeInfo): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            node.stateDescription?.toString()?.trim()?.lowercase().orEmpty()
+        } else {
+            ""
+        }
+    }
+
     private fun nodeLabel(node: AccessibilityNodeInfo): String {
         return buildString {
             node.text?.let { append(it).append(' ') }
-            node.contentDescription?.let { append(it) }
+            node.contentDescription?.let { append(it).append(' ') }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                node.stateDescription?.let { append(it) }
+            }
         }.trim().lowercase()
     }
 
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         var current: AccessibilityNodeInfo? = node
         var depth = 0
-        while (current != null && depth < 6) {
-            if (current.isClickable) return current
+        while (current != null && depth < 8) {
+            val supportsClick = current.isClickable ||
+                current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+            if (supportsClick && current.isEnabled) return current
             current = current.parent
             depth++
         }
@@ -502,6 +658,8 @@ class MeetAutoJoinAccessibilityService : AccessibilityService() {
 
         private val SUPPORTED_PACKAGES = setOf(
             "com.google.android.apps.meetings",
+            "com.google.android.apps.tachyon",
+            "com.google.android.gms",
             "com.google.android.gm",
             "com.android.chrome"
         )

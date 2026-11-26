@@ -155,6 +155,7 @@ private fun LogEntryCard(
         "WAITING" -> StatusWaiting to Icons.Default.HourglassTop
         "RETRYING" -> MaterialTheme.colorScheme.tertiary to Icons.Default.Refresh
         "STOPPED", "FAILED" -> StatusError to Icons.Default.StopCircle
+        "ACCOUNT", "PREJOIN" -> MaterialTheme.colorScheme.secondary to Icons.Default.CheckCircle
         else -> MaterialTheme.colorScheme.primary to Icons.Default.PlayCircle
     }
 

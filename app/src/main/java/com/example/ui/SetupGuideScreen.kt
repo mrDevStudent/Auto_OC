@@ -107,7 +107,7 @@ fun SetupGuideScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "Required permissions for hands-free Google Meet joining on ${readiness.manufacturerName} ${readiness.deviceModel}",
+                        text = "Configured for ${readiness.deviceDisplayLabel}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -163,7 +163,11 @@ fun SetupGuideScreen(
                 ReadinessCheckCard(
                     icon = Icons.Default.AccessibilityNew,
                     title = "Auto-Join Accessibility Service",
-                    description = "Detects Google Meet's Join / Ask to join button, switches Gmail, disables camera/mic, retries on timeouts, and detects admission.",
+                    description = if (readiness.accessibilityEnabled) {
+                        "Active: switches Gmail account, turns off camera & mic, taps Join, retries on timeout, and detects admission."
+                    } else {
+                        "Required: switches Gmail, turns off camera/mic, taps Join, and detects admission.\nColorOS 16 sideload tip: if toggle is grayed out, open App Info -> ⋮ (top right) -> Allow restricted settings first."
+                    },
                     isReady = readiness.accessibilityEnabled,
                     actionLabel = if (readiness.accessibilityEnabled) "Manage Service" else "Enable Service",
                     buttonTestTag = "setup_accessibility_button",
@@ -245,38 +249,47 @@ fun SetupGuideScreen(
                                 contentDescription = "Oppo and ColorOS background guide",
                                 tint = MaterialTheme.colorScheme.primary
                             )
-                            Text(
-                                text = if (readiness.isOppoOrColorOs) {
-                                    "Oppo ColorOS Reliability Checklist"
-                                } else {
-                                    "Oppo Reno 11 & OEM Background Checklist"
-                                },
-                                style = MaterialTheme.typography.titleMedium
-                            )
+                        Text(
+                            text = "ColorOS 16 (OPPO Reno11 5G) Checklist",
+                            style = MaterialTheme.typography.titleMedium
+                        )
                         }
 
                         Text(
-                            text = "1. Open App Info -> Battery usage -> enable Allow foreground activity & Allow background activity.\n" +
-                                "2. Enable Allow auto-launch so scheduled meetings survive reboots.\n" +
-                                "3. Turn off \"Pause app activity if unused\" in App Info -> Permissions.\n" +
-                                "4. Optional: Lock MeetPilot in Recent Apps so ColorOS never clears it during long waiting rooms.",
+                            text = "1. Restricted Settings (GitHub APK): Open MeetPilot App Info -> tap ⋮ (top-right) -> Allow restricted settings, then enable Accessibility.\n" +
+                                "2. Battery Usage: Open App Info -> Battery usage -> Allow background activity & Allow foreground activity.\n" +
+                                "3. Auto-Launch: Allow auto-launch so Monday schedules survive reboots.\n" +
+                                "4. Lock in Recents: Swipe down on MeetPilot in Recent Apps -> Lock so ColorOS 16 keeps waiting rooms alive.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        OutlinedButton(
-                            onClick = { DeviceReadinessHelper.openAppDetailsSettings(context) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("setup_app_info_button")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Open App Info",
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Open MeetPilot App Info")
+                            OutlinedButton(
+                                onClick = { DeviceReadinessHelper.openAppDetailsSettings(context) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("setup_app_info_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Open App Info",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("App Info")
+                            }
+                            FilledTonalButton(
+                                onClick = { DeviceReadinessHelper.openColorOsAutoLaunchOrAppInfo(context) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("setup_coloros_autolaunch_button")
+                            ) {
+                                Text("ColorOS Power")
+                            }
                         }
                     }
                 }

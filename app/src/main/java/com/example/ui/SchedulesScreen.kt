@@ -146,8 +146,8 @@ fun SchedulesScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "Scheduled Google Meet auto-join",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = uiState.readiness.deviceDisplayLabel,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

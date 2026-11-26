@@ -5,5 +5,5 @@
     android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_description"
-    android:notificationTimeout="250"
-    android:packageNames="com.google.android.apps.meetings,com.google.android.gm,com.android.chrome" />
+    android:notificationTimeout="200"
+    android:packageNames="com.google.android.apps.meetings,com.google.android.apps.tachyon,com.google.android.gms,com.google.android.gm,com.android.chrome" />
